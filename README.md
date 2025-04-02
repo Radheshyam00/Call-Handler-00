@@ -22,8 +22,8 @@ Ensure you have the following installed before running the project:
 
 ```sh
 # Clone the repository
-git clone <repository-url>
-cd <repository-folder>
+git clone https://github.com/Radheshyam00/Call-Handler-00.git
+cd Call-Handler-00
 
 # Create and activate a virtual environment
 python -m venv venv
@@ -54,7 +54,7 @@ API_KEY = "your_api_key"
 ## Usage
 
 ```sh
-python call.py
+streamlit run call.py
 ```
 
 ## File Structure
