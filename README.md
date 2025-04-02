@@ -71,6 +71,8 @@ project-folder/
 ```txt
 pymongo  # MongoDB driver for Python
 requests  # For making API requests
+streamlit # For making UI
+datetime # For timestamp
 ```
 
 ## License
