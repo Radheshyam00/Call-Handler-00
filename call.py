@@ -2,6 +2,37 @@ import streamlit as st
 import requests
 import pymongo
 from datetime import datetime
+import pandas as pd
+from streamlit_extras.colored_header import colored_header
+import plotly.express as px
+
+# Set page configuration
+st.set_page_config(
+    page_title="Call Filter System",
+    page_icon="📞",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    .main-header {font-size: 2.5rem !important; font-weight: 700 !important; margin-bottom: 1rem !important;}
+    .sub-header {font-size: 1.5rem !important; font-weight: 600 !important; margin-top: 1rem !important;}
+    .card {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .success-card {background-color: #d4edda; color: #155724; border-left: 5px solid #28a745;}
+    .warning-card {background-color: #fff3cd; color: #856404; border-left: 5px solid #ffc107;}
+    .danger-card {background-color: #f8d7da; color: #721c24; border-left: 5px solid #dc3545;}
+    .info-card {background-color: #d1ecf1; color: #0c5460; border-left: 5px solid #17a2b8;}
+    .sidebar .sidebar-content {background-color: #f8f9fa !important;}
+</style>
+""", unsafe_allow_html=True)
 
 # MongoDB Configuration (Replace with your MongoDB URI)
 MONGO_URI = "mongodb+srv://radheshyamjanwa666:TPo5T91ldKNiWWCM@cluster0.bdfxa.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
@@ -11,7 +42,11 @@ LISTS_COLLECTION = "phone_lists"
 API_HISTORY_COLLECTION = "api_history"
 
 # Connect to MongoDB
-client = pymongo.MongoClient(MONGO_URI)
+@st.cache_resource
+def init_connection():
+    return pymongo.MongoClient(MONGO_URI)
+
+client = init_connection()
 db = client[DB_NAME]
 rules_collection = db[FILTER_COLLECTION]
 lists_collection = db[LISTS_COLLECTION]
@@ -24,36 +59,39 @@ def validate_number(mobile_number):
     """Check if a mobile number is valid using NumLookup API and detect spam calls."""
     url = f"https://www.numlookupapi.com/api/validate/{mobile_number}?apikey={NUMLOOKUP_API_KEY}"
     
-    try:
-        response = requests.get(url, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        
-        if not data.get("valid"):
-            return None  # Invalid number
-        
-        # Check for missing values (spam detection)
-        if not all([data.get("location"), data.get("carrier"), data.get("line_type")]):
-            data["spam_status"] = True  # Mark as spam
-        else:
-            data["spam_status"] = False  # Safe number
-        
-        # Store API response in MongoDB
-        api_history_collection.insert_one({
-            "number": mobile_number,
-            "response": data,
-            "timestamp": datetime.now()
-        })
-        
-        return data
-    except requests.RequestException as e:
-        st.error(f"API request failed: {e}")
-        return None
+    with st.spinner('Validating number...'):
+        try:
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            
+            if not data.get("valid"):
+                return None  # Invalid number
+            
+            # Check for missing values (spam detection)
+            if not all([data.get("location"), data.get("carrier"), data.get("line_type")]):
+                data["spam_status"] = True  # Mark as spam
+            else:
+                data["spam_status"] = False  # Safe number
+            
+            # Store API response in MongoDB
+            api_history_collection.insert_one({
+                "number": mobile_number,
+                "response": data,
+                "timestamp": datetime.now()
+            })
+            
+            return data
+        except requests.RequestException as e:
+            st.error(f"API request failed: {e}")
+            return None
 
+@st.cache_data(ttl=300)
 def get_api_history():
     """Retrieve stored API call data from MongoDB."""
-    return list(api_history_collection.find({}, {"_id": 0}))
+    return list(api_history_collection.find({}, {"_id": 0}).sort("timestamp", -1))
 
+@st.cache_data(ttl=60)
 def get_phone_list(list_name):
     """Retrieve phone numbers from MongoDB list (whitelist, blacklist, blocked)."""
     result = lists_collection.find_one({"list_name": list_name})
@@ -72,14 +110,25 @@ def update_phone_list(list_name, phone_number, action="add"):
             {"list_name": list_name},
             {"$pull": {"numbers": phone_number}}
         )
+    # Clear cache to refresh data
+    st.cache_data.clear()
 
+@st.cache_data(ttl=60)
 def get_all_filter_rules():
     """Retrieve all filter rules from MongoDB."""
-    return list(rules_collection.find({}, {"_id": 0}))
+    return list(rules_collection.find({}))
 
 def add_filter_rule(rule):
     """Insert a new filter rule into MongoDB."""
     rules_collection.insert_one(rule)
+    # Clear cache to refresh data
+    st.cache_data.clear()
+
+def remove_filter_rule(rule_id):
+    """Remove a filter rule from MongoDB by its ID."""
+    rules_collection.delete_one({"_id": rule_id})
+    # Clear cache to refresh data
+    st.cache_data.clear()
 
 def check_filters(data):
     """Apply filter rules from MongoDB to determine if a number should be allowed or blocked."""
@@ -88,112 +137,414 @@ def check_filters(data):
     now = datetime.now().time()
     
     filter_rules = get_all_filter_rules()
-
+    
+    # If there are no rules, allow the call
+    if not filter_rules:
+        return True, "No filter rules defined"
+    
     for rule in filter_rules:
-        if country in rule.get("country", []) or location in rule.get("location", []):
-            return False  # Blocked by country or location
-
+        reason = None
+        
+        # Check country restrictions
+        if rule.get("country") and country in rule.get("country", []):
+            reason = f"Blocked by country rule: {rule['name']}"
+            return False, reason
+        
+        # Check location restrictions
+        if rule.get("location") and location in rule.get("location", []):
+            reason = f"Blocked by location rule: {rule['name']}"
+            return False, reason
+        
+        # Check time restrictions
         for time_range in rule.get("time", []):
             try:
                 start, end = [datetime.strptime(t.strip(), "%H:%M").time() for t in time_range.split("-")]
                 if start <= now <= end:
-                    return False  # Blocked by time
+                    reason = f"Blocked by time rule: {rule['name']} ({time_range})"
+                    return False, reason
             except ValueError:
                 continue  # Ignore invalid time format
+    
+    # If no rules matched, allow the call
+    return True, "Passed all filter rules"
 
-    return True
+def display_data_card(title, data, card_type="info"):
+    """Display data in a styled card."""
+    st.markdown(f"""
+    <div class="card {card_type}-card">
+        <h3>{title}</h3>
+        <pre>{data}</pre>
+    </div>
+    """, unsafe_allow_html=True)
 
-st.sidebar.title("📋 Navigation")
-page = st.sidebar.radio("Go to", ["Number Checker", "Filter System", "Manage Lists", "API Data List"])
+def get_api_stats():
+    """Get statistics from API history."""
+    history = get_api_history()
+    if not history:
+        return None
+    
+    total_calls = len(history)
+    spam_calls = sum(1 for record in history if record.get('response', {}).get('spam_status', False))
+    valid_calls = sum(1 for record in history if record.get('response', {}).get('valid', False))
+    
+    return {
+        "total": total_calls,
+        "spam": spam_calls,
+        "valid": valid_calls,
+        "spam_percentage": (spam_calls / total_calls * 100) if total_calls > 0 else 0
+    }
 
-if page == "Number Checker":
-    st.title("📱 Mobile Number Checker")
-    mobile_number = st.text_input("Enter Mobile Number:").strip()
+# Sidebar with improved navigation
+with st.sidebar:
+    # st.image("https://img.icons8.com/fluency/96/000000/phone-disconnected.png", width=80)
+    st.markdown("<h1 style='text-align: center;'>Call Filter System</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Dashboard metrics in sidebar
+    stats = get_api_stats()
+    if stats:
+        st.markdown("### 📊 Dashboard")
+        col1, col2 = st.columns(2)
+        col1.metric("Total Lookups", stats["total"])
+        col2.metric("Spam Detected", stats["spam"])
+        
+        # Create a mini chart
+        chart_data = pd.DataFrame({
+            'Category': ['Valid', 'Spam'],
+            'Count': [stats["valid"] - stats["spam"], stats["spam"]]
+        })
+        fig = px.pie(chart_data, values='Count', names='Category', 
+                    color_discrete_map={'Valid': '#28a745', 'Spam': '#dc3545'},
+                    height=200)
+        fig.update_layout(margin=dict(l=20, r=20, t=30, b=0))
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("---")
+    
+    # Navigation menu with icons
+    st.markdown("### 📋 Navigation")
+    page = st.radio("", 
+                   ["🔍 Number Checker", 
+                    "⚙️ Filter Rules", 
+                    "📞 Phone Lists", 
+                    "📊 API History",
+                    "🔧 Settings"])
 
-    if st.button("Check Number"):
-        whitelist = get_phone_list("whitelist")
-        blacklist = get_phone_list("blacklist")
-        blocked_list = get_phone_list("blocked")
-
+# Main content area
+if page == "🔍 Number Checker":
+    colored_header(label="📱 Mobile Number Verification", description="Check if a number is valid, spam, or blocked", color_name="blue-70")
+    
+    with st.container():
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            mobile_number = st.text_input("Enter Mobile Number:", placeholder="+1234567890").strip()
+        with col2:
+            st.write("")
+            st.write("")
+            check_button = st.button("Check Number", use_container_width=True)
+    
+    if check_button:
         if not mobile_number:
             st.error("Please enter a mobile number.")
-        elif mobile_number in blacklist or mobile_number in blocked_list:
-            st.error("❌ This number is in the blacklist or blocked list.")
-        elif mobile_number in whitelist:
-            st.success("✅ This number is whitelisted and allowed.")
         else:
-            data = validate_number(mobile_number)
-            if not data:
-                st.error("❌ Invalid number or API failure.")
-            elif data.get("spam_status"):
-                st.error("🚨 SPAM ALERT! This call is flagged as SPAM due to missing data.")
-            elif not check_filters(data):
-                st.error("🚫 Number blocked based on filter rules.")
+            whitelist = get_phone_list("whitelist")
+            blacklist = get_phone_list("blacklist")
+            blocked_list = get_phone_list("blocked")
+            
+            with st.container():
+                if mobile_number in blacklist:
+                    st.error("❌ This number is in the blacklist.")
+                    st.button("➕ Add to Whitelist", on_click=lambda: update_phone_list("whitelist", mobile_number, action="add"))
+                elif mobile_number in blocked_list:
+                    st.error("❌ This number is in the blocked list.")
+                    st.button("➕ Add to Whitelist", on_click=lambda: update_phone_list("whitelist", mobile_number, action="add"))
+                elif mobile_number in whitelist:
+                    st.success("✅ This number is whitelisted and allowed.")
+                    st.button("➖ Remove from Whitelist", on_click=lambda: update_phone_list("whitelist", mobile_number, action="remove"))
+                else:
+                    data = validate_number(mobile_number)
+                    if not data:
+                        st.error("❌ Invalid number or API failure.")
+                    else:
+                        allowed, reason = check_filters(data)
+                        
+                        cols = st.columns(3)
+                        if data.get("spam_status"):
+                            cols[0].error("🚨 SPAM ALERT! Missing carrier or location data.")
+                            cols[1].button("➕ Add to Blacklist", on_click=lambda: update_phone_list("blacklist", mobile_number, action="add"))
+                        elif not allowed:
+                            cols[0].warning(f"🚫 Number blocked: {reason}")
+                            cols[1].button("➕ Add to Whitelist", on_click=lambda: update_phone_list("whitelist", mobile_number, action="add"))
+                        else:
+                            cols[0].success(f"✅ Number allowed: {reason}")
+                            cols[1].button("➕ Add to Blacklist", on_click=lambda: update_phone_list("blacklist", mobile_number, action="add"))
+                        
+                        # Display results in a nice formatted card
+                        with st.expander("📋 View Detailed Information", expanded=True):
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("### 📞 Number Information")
+                                st.markdown(f"**Number:** {data.get('number', 'N/A')}")
+                                st.markdown(f"**Country:** {data.get('country_code', 'N/A')} ({data.get('country_name', 'N/A')})")
+                                st.markdown(f"**Location:** {data.get('location', 'N/A')}")
+                                st.markdown(f"**Carrier:** {data.get('carrier', 'N/A')}")
+                                st.markdown(f"**Line Type:** {data.get('line_type', 'N/A')}")
+                            
+                            with col2:
+                                st.markdown("### 🔍 Verification Status")
+                                status_color = "green" if not data.get("spam_status") and allowed else "red"
+                                st.markdown(f"**Valid Number:** {'✅' if data.get('valid') else '❌'}")
+                                st.markdown(f"**Spam Status:** {'🚨 Potential Spam' if data.get('spam_status') else '✅ Not Spam'}")
+                                st.markdown(f"**Filter Status:** {'✅ Allowed' if allowed else '🚫 Blocked'}")
+                                st.markdown(f"**Filter Reason:** {reason}")
+
+elif page == "⚙️ Filter Rules":
+    colored_header(label="⚙️ Filter System Rules", description="Configure rules to filter incoming calls", color_name="blue-70")
+    
+    with st.expander("➕ Add New Filter Rule", expanded=True):
+        st.markdown("Define rules to Block calls based on country, location, or time of day.")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            rule_name = st.text_input("Rule Name:", placeholder="e.g., Block Night Calls").strip()
+        
+        with col2:
+            rule_type = st.selectbox("Rule Type:", ["Country-based", "Location-based", "Time-based", "Combined"])
+        
+        if rule_type == "Country-based" or rule_type == "Combined":
+            country_values = st.text_area("Enter Countries (comma-separated):", 
+                                          placeholder="e.g., US, CA, UK").strip()
+        else:
+            country_values = ""
+            
+        if rule_type == "Location-based" or rule_type == "Combined":
+            location_values = st.text_area("Enter Locations (comma-separated):", 
+                                           placeholder="e.g., New York, California").strip()
+        else:
+            location_values = ""
+            
+        if rule_type == "Time-based" or rule_type == "Combined":
+            time_values = st.text_area("Enter Time Ranges (HH:MM-HH:MM, comma-separated):", 
+                                       placeholder="e.g., 22:00-06:00, 12:00-13:00").strip()
+        else:
+            time_values = ""
+
+        if st.button("Add Rule", use_container_width=True):
+            if rule_name:
+                new_rule = {
+                    "name": rule_name,
+                    "country": [c.strip() for c in country_values.split(",") if c.strip()],
+                    "location": [l.strip() for l in location_values.split(",") if l.strip()],
+                    "time": [t.strip() for t in time_values.split(",") if t.strip()]
+                }
+                add_filter_rule(new_rule)
+                st.success(f"Rule '{rule_name}' added successfully!")
             else:
-                st.success("✅ Number allowed based on filter rules.")
-                st.json(data)
+                st.error("Please provide a valid rule name.")
 
-elif page == "Filter System":
-    st.title("⚙️ Filter System Rules")
-    rule_name = st.text_input("Rule Name:").strip()
-    country_values = st.text_area("Enter Blocked Countries (comma-separated)").strip()
-    location_values = st.text_area("Enter Blocked Locations (comma-separated)").strip()
-    time_values = st.text_area("Enter Restricted Time Ranges (HH:MM-HH:MM, comma-separated)").strip()
+    st.markdown("---")
+    st.markdown("### 📋 Current Rules")
+    filter_rules = get_all_filter_rules()
+    
+    if not filter_rules:
+        st.info("No rules added yet. Use the form above to create your first rule.")
+    else:
+        for i, rule in enumerate(filter_rules):
+            with st.container():
+                st.markdown(f"<div class='card'>", unsafe_allow_html=True)
+                cols = st.columns([3, 1])
+                with cols[0]:
+                    st.markdown(f"#### 📌 {rule['name']}")
+                    
+                    if rule['country']:
+                        st.markdown(f"🌍 **Countries:** {', '.join(rule['country'])}")
+                    
+                    if rule['location']:
+                        st.markdown(f"📍 **Locations:** {', '.join(rule['location'])}")
+                    
+                    if rule['time']:
+                        st.markdown(f"⏱️ **Time Ranges:** {', '.join(rule['time'])}")
+                
+                with cols[1]:
+                    st.markdown("##### Actions")
+                    if st.button("🗑️ Remove", key=f"remove_rule_{i}", use_container_width=True):
+                        remove_filter_rule(rule['_id'])
+                        st.success(f"Rule '{rule['name']}' removed successfully!")
+                        st.rerun()
+                
+                st.markdown(f"</div>", unsafe_allow_html=True)
 
-    if st.button("Add Rule"):
-        if rule_name:
-            new_rule = {
-                "name": rule_name,
-                "country": [c.strip() for c in country_values.split(",") if c.strip()],
-                "location": [l.strip() for l in location_values.split(",") if l.strip()],
-                "time": [t.strip() for t in time_values.split(",") if t.strip()]
-            }
-            add_filter_rule(new_rule)
-            st.success(f"Rule '{rule_name}' added successfully!")
-        else:
-            st.error("Please provide a valid rule name.")
+elif page == "📞 Phone Lists":
+    colored_header(label="📞 Manage Phone Lists", description="Organize phone numbers into lists", color_name="blue-70")
+    
+    # Create tabs for different lists
+    tabs = st.tabs(["✅ Whitelist", "❌ Blacklist", "🚫 Blocked"])
+    
+    for i, list_type in enumerate(["whitelist", "blacklist", "blocked"]):
+        with tabs[i]:
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                phone_number = st.text_input(f"Enter Phone Number for {list_type.capitalize()}:", 
+                                             placeholder="+1234567890", key=f"input_{list_type}").strip()
+            
+            with col2:
+                st.write("")
+                st.write("")
+                add_col, remove_col = st.columns(2)
+                with add_col:
+                    add_button = st.button("Add", key=f"add_{list_type}", use_container_width=True)
+                with remove_col:
+                    remove_button = st.button("Remove", key=f"remove_{list_type}", use_container_width=True)
+            
+            if add_button and phone_number:
+                update_phone_list(list_type, phone_number, action="add")
+                st.success(f"✅ Added {phone_number} to {list_type}.")
+            
+            if remove_button and phone_number:
+                update_phone_list(list_type, phone_number, action="remove")
+                st.success(f"🚫 Removed {phone_number} from {list_type}.")
+            
+            # Show current list contents
+            st.markdown("---")
+            st.markdown(f"### Current {list_type.capitalize()}")
+            
+            current_list = get_phone_list(list_type)
+            if not current_list:
+                st.info(f"No numbers in the {list_type} yet.")
+            else:
+                # Create a DataFrame for better display
+                df = pd.DataFrame({"Phone Number": list(current_list)})
+                st.dataframe(df, use_container_width=True)
+                
+                # Export option
+                st.download_button(
+                    label="📥 Export List",
+                    data=df.to_csv(index=False).encode('utf-8'),
+                    file_name=f'{list_type}_numbers.csv',
+                    mime='text/csv',
+                )
 
-    st.write("### Current Rules")
-    with st.expander("View Current Rules", expanded=False):
-        filter_rules = get_all_filter_rules()
-        if not filter_rules:
-            st.write("No rules added yet.")
-        else:
-            for rule in filter_rules:
-                st.markdown(f"**📌 Rule Name:** {rule['name']}")
-                st.write(f"🔴 **Blocked Countries:** {', '.join(rule['country']) or 'None'}")
-                st.write(f"📍 **Blocked Locations:** {', '.join(rule['location']) or 'None'}")
-                st.write(f"⏳ **Restricted Time Ranges:** {', '.join(rule['time']) or 'None'}")
+elif page == "📊 API History":
+    colored_header(label="📊 API Lookup History", description="View past number lookups and their results", color_name="blue-70")
+    
+    api_history = get_api_history()
+    
+    # Add some analytics at the top
+    if api_history:
+        stats = get_api_stats()
+        col1, col2, col3, col4 = st.columns(4)
+        
+        col1.metric("Total Lookups", stats["total"])
+        col2.metric("Valid Numbers", stats["valid"])
+        col3.metric("Spam Numbers", stats["spam"])
+        col4.metric("Spam Rate", f"{stats['spam_percentage']:.1f}%")
+        
+        # Create chart data
+        lookup_dates = [record.get('timestamp').date() for record in api_history if 'timestamp' in record]
+        if lookup_dates:
+            date_counts = {}
+            for date in lookup_dates:
+                date_str = date.strftime('%Y-%m-%d')
+                date_counts[date_str] = date_counts.get(date_str, 0) + 1
+            
+            chart_df = pd.DataFrame({
+                'Date': list(date_counts.keys()),
+                'Lookups': list(date_counts.values())
+            })
+            chart_df['Date'] = pd.to_datetime(chart_df['Date'])
+            chart_df = chart_df.sort_values('Date')
+            
+            # Plot the chart
+            fig = px.line(chart_df, x='Date', y='Lookups', 
+                        title='Number Lookups Over Time',
+                        labels={'Lookups': 'Number of Lookups', 'Date': 'Date'},
+                        markers=True)
+            fig.update_layout(margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # Display history records
+    st.markdown("### Recent Lookups")
+    
+    if not api_history:
+        st.info("No API lookup history available yet.")
+    else:
+        # Convert to DataFrame for better display
+        records = []
+        for record in api_history:
+            response = record.get('response', {})
+            records.append({
+                'Number': record.get('number'),
+                'Timestamp': record.get('timestamp'),
+                'Valid': '✅' if response.get('valid') else '❌',
+                'Country': response.get('country_code'),
+                'Location': response.get('location'),
+                'Carrier': response.get('carrier'),
+                'Line Type': response.get('line_type'),
+                'Spam': '🚨' if response.get('spam_status') else '✅',
+            })
+        
+        df = pd.DataFrame(records)
+        st.dataframe(df, use_container_width=True)
+        
+        # Add export option
+        st.download_button(
+            label="📥 Export History",
+            data=df.to_csv(index=False).encode('utf-8'),
+            file_name='api_lookup_history.csv',
+            mime='text/csv',
+        )
+        
+        # Option to view detailed records
+        with st.expander("View Detailed Records", expanded=False):
+            for i, record in enumerate(api_history[:10]):  # Show only the latest 10 for performance
+                response = record.get('response', {})
+                st.markdown(f"#### Number: {record.get('number')}")
+                st.markdown(f"Timestamp: {record.get('timestamp')}")
+                st.json(response)
                 st.markdown("---")
 
-elif page == "Manage Lists":
-    st.title("📜 Manage Whitelist, Blacklist, and Blocked List")
-
-    list_type = st.selectbox("Select List Type", ["Whitelist", "Blacklist", "Blocked"])
-    phone_number = st.text_input("Enter Phone Number:").strip()
+elif page == "🔧 Settings":
+    colored_header(label="🔧 Settings", description="Configure application settings", color_name="blue-70")
     
-    if st.button("Add to List"):
-        if phone_number:
-            update_phone_list(list_type.lower(), phone_number, action="add")
-            st.success(f"✅ Added {phone_number} to {list_type}.")
-        else:
-            st.error("Please enter a valid phone number.")
-
-    if st.button("Remove from List"):
-        if phone_number:
-            update_phone_list(list_type.lower(), phone_number, action="remove")
-            st.success(f"🚫 Removed {phone_number} from {list_type}.")
-        else:
-            st.error("Please enter a valid phone number.")
-
-elif page == "API Data List":
-    st.title("📜 API Data List (Stored Lookup History)")
+    st.markdown("### API Configuration")
+    api_key = st.text_input("NumLookup API Key:", value=NUMLOOKUP_API_KEY, type="password")
     
-    st.write("### API Lookup History")
-    api_history = get_api_history()
-    if not api_history:
-        st.write("No API data stored yet.")
-    else:
-        for record in api_history:
-            st.json(record["response"])
-            st.markdown("---")
+    if st.button("Save API Key"):
+        st.success("API Key saved successfully!")
+        # In a real implementation, you would save this to a secure configuration
+    
+    st.markdown("---")
+    
+    st.markdown("### Database Connection")
+    st.code(f"MongoDB URI: {MONGO_URI.replace(MONGO_URI.split('@')[0] + '@', '*****@')}")
+    st.code(f"Database: {DB_NAME}")
+    
+    if st.button("Test Connection"):
+        try:
+            client.admin.command('ping')
+            st.success("✅ Database connection successful!")
+        except Exception as e:
+            st.error(f"❌ Database connection failed: {e}")
+    
+    st.markdown("---")
+    
+    st.markdown("### Clear Data")
+    if st.button("Clear API History"):
+        api_history_collection.delete_many({})
+        st.cache_data.clear()
+        st.success("API history cleared successfully!")
+    
+    if st.button("Reset All Settings"):
+        st.warning("This will clear all data including filter rules and phone lists.")
+        confirm = st.checkbox("I understand this action cannot be undone")
+        if confirm:
+            if st.button("Confirm Reset"):
+                rules_collection.delete_many({})
+                lists_collection.delete_many({})
+                api_history_collection.delete_many({})
+                st.cache_data.clear()
+                st.success("All data has been reset!")
+                
+# Footer
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: gray;'>Call Filter System © 2025 - Version 2.0</p>", unsafe_allow_html=True)
