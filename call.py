@@ -34,7 +34,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# MongoDB Configuration (Replace with your MongoDB URI)
+# MongoDB Configuration
 MONGO_URI = "mongodb+srv://radheshyamjanwa666:TPo5T91ldKNiWWCM@cluster0.bdfxa.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 DB_NAME = "call_filter_db"
 FILTER_COLLECTION = "filter_rules"
