@@ -412,11 +412,9 @@ elif page == "📞 Phone Lists":
             if not current_list:
                 st.info(f"No numbers in the {list_type} yet.")
             else:
-                # Create a DataFrame for better display
                 df = pd.DataFrame({"Phone Number": list(current_list)})
                 st.dataframe(df, use_container_width=True)
                 
-                # Export option
                 st.download_button(
                     label="📥 Export List",
                     data=df.to_csv(index=False).encode('utf-8'),
