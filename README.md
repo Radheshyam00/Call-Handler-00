@@ -21,12 +21,29 @@ This project uses an Arduino with a `GSM module (SIM800L/SIM900)` to implement m
 - Works on SMS and/or Call Triggers (based on implementation).
 
 ## Prerequisites
-
+### Without GSM module
 Ensure you have the following installed before running the project:
 
 - Python (>= 3.x)
 - MongoDB
 - An active NumLookup API key
+
+### With GSM module
+#### Hardware Requirements
+
+- Arduino Uno / Mega / Nano
+- SIM800L or SIM900 GSM Module
+- SIM Card with balance/data
+- Jumper wires
+- Optional: LCD for output display
+
+##### Software Requirements
+
+- Arduino IDE
+- Libraries:
+   -- SoftwareSerial.h
+   -- TinyGSM.h (if used for HTTP)
+    -- ArduinoJson.h (for parsing API responses, if included)
 
 ## Installation
 
