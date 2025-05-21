@@ -1,14 +1,24 @@
 # Python Project
 
 ## Project Overview
-
+### Without GSM module
 This Python project utilizes `MongoDB` for data storage and the `NumLookup API` for phone number validation. The core functionality is implemented in `call.py`, and the project dependencies are listed in `requirements.txt`.
 
-## Features
+### With GSM module
+This project uses an Arduino with a `GSM module (SIM800L/SIM900)` to implement mobile number blacklisting and integrates with a public Number Lookup API for caller identification. The system can automatically reject calls from blacklisted numbers and optionally log or display information about callers via the API.
 
+## Features
+### Without GSM module
 - Integration with **MongoDB** for data management.
 - Utilization of **NumLookup API** for phone number verification.
 - Modular and scalable Python script (`call.py`).
+
+### With GSM module
+- 📵 Blacklist Support: Automatically reject calls from blacklisted numbers.
+- 🌐 Number Lookup API: Integrates with a public API to fetch caller details (e.g., location, carrier).
+- 📶 GSM Module Integration: Uses GSM module (e.g., SIM800L) for call handling.
+- 🪵 Serial Output Logging: Displays debug and API response on Serial Monitor.
+- 🔌 Works on SMS and/or Call Triggers (based on implementation).
 
 ## Prerequisites
 
