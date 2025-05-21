@@ -74,7 +74,7 @@ GND -> GND
 
     - [NumlookupAPI](https://numlookupapi.com/)
 
-    - Numverify
+    - [Numverify](https://numverify.com/)
 
 5. Replace **YOUR_API_KEY** in the sketch.
 
