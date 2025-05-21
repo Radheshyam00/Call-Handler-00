@@ -29,19 +29,19 @@ Ensure you have the following installed before running the project:
 - An active NumLookup API key
 
 ### 2. With GSM module
-#### Hardware Requirements
+1. Hardware Requirements
 
-- Arduino Uno / Mega / Nano
-- SIM800L or SIM900 GSM Module
-- SIM Card with balance/data
-- Jumper wires
-- Optional: LCD for output display
+    - Arduino Uno / Mega / Nano
+    - SIM800L or SIM900 GSM Module
+    - SIM Card with balance/data
+    - Jumper wires
+    - Optional: LCD for output display
 
-##### Software Requirements
+2. Software Requirements
 
-- Arduino IDE
-- Libraries:
-  SoftwareSerial.h
+    - Arduino IDE
+    - Libraries:
+    SoftwareSerial.h
 
 ## File Descriptions
 `sketch_blacklisting_mobile-numbers.ino`
