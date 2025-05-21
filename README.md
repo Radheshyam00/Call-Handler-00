@@ -43,6 +43,18 @@ Ensure you have the following installed before running the project:
 - Libraries:
   SoftwareSerial.h
 
+## File Descriptions
+`sketch_blacklisting_mobile-numbers.ino`
+- Maintains a list of blacklisted numbers.
+- Reads incoming call details.
+- Compares caller ID with the blacklist.
+- Rejects the call if it matches.
+
+`sketch_numlookup-api_integration.ino`
+- Sends HTTP requests to a Number Lookup API (e.g., Numverify, NumlookupAPI).
+- Parses and displays information such as country, carrier, and type.
+- Could be triggered via SMS or button.
+
 ## Installation
 
 ```sh
