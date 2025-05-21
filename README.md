@@ -1,19 +1,19 @@
 # Python Project
 
 ## Project Overview
-### Without GSM module
+### 1. Without GSM module
 This Python project utilizes `MongoDB` for data storage and the `NumLookup API` for phone number validation. The core functionality is implemented in `call.py`, and the project dependencies are listed in `requirements.txt`.
 
-### With GSM module
+### 2. With GSM module
 This project uses an Arduino with a `GSM module (SIM800L/SIM900)` to implement mobile number blacklisting and integrates with a public `NumLookup API` for caller identification. The system can automatically reject calls from blacklisted numbers and optionally log or display information about callers via the API.
 
 ## Features
-### Without GSM module
+### 1. Without GSM module
 - Integration with **MongoDB** for data management.
 - Utilization of **NumLookup API** for phone number verification.
 - Modular and scalable Python script (`call.py`).
 
-### With GSM module
+### 2. With GSM module
 - **Blacklist Support:** Automatically reject calls from blacklisted numbers.
 - **Number Lookup API:** Integrates with a public API to fetch caller details (e.g., location, carrier).
 - **GSM Module Integration:** Uses GSM module (e.g., SIM800L) for call handling.
@@ -21,27 +21,27 @@ This project uses an Arduino with a `GSM module (SIM800L/SIM900)` to implement m
 - Works on SMS and/or Call Triggers (based on implementation).
 
 ## Prerequisites
-### Without GSM module
-Ensure you have the following installed before running the project:
+### 1. Without GSM module
+    Ensure you have the following installed before running the project:
 
-- Python (>= 3.x)
-- MongoDB
-- An active NumLookup API key
+    - Python (>= 3.x)
+    - MongoDB
+    - An active NumLookup API key
 
-### With GSM module
+### 2. With GSM module
 #### Hardware Requirements
 
-- Arduino Uno / Mega / Nano
-- SIM800L or SIM900 GSM Module
-- SIM Card with balance/data
-- Jumper wires
-- Optional: LCD for output display
+    - Arduino Uno / Mega / Nano
+    - SIM800L or SIM900 GSM Module
+    - SIM Card with balance/data
+    - Jumper wires
+    - Optional: LCD for output display
 
 ##### Software Requirements
 
-- Arduino IDE
-- Libraries:
-  SoftwareSerial.h
+    - Arduino IDE
+    - Libraries:
+    SoftwareSerial.h
 
 ## File Descriptions
 `sketch_blacklisting_mobile-numbers.ino`
