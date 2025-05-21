@@ -14,10 +14,10 @@ This project uses an Arduino with a `GSM module (SIM800L/SIM900)` to implement m
 - Modular and scalable Python script (`call.py`).
 
 ### With GSM module
-- `Blacklist Support:` Automatically reject calls from blacklisted numbers.
-- `Number Lookup API:` Integrates with a public API to fetch caller details (e.g., location, carrier).
-- `GSM Module Integration:` Uses GSM module (e.g., SIM800L) for call handling.
-- `Serial Output Logging:` Displays debug and API response on Serial Monitor.
+- **Blacklist Support:** Automatically reject calls from blacklisted numbers.
+- **Number Lookup API:** Integrates with a public API to fetch caller details (e.g., location, carrier).
+- **GSM Module Integration:** Uses GSM module (e.g., SIM800L) for call handling.
+- **Serial Output Logging:** Displays debug and API response on Serial Monitor.
 - Works on SMS and/or Call Triggers (based on implementation).
 
 ## Prerequisites
