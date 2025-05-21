@@ -5,6 +5,8 @@ from datetime import datetime
 import pandas as pd
 from streamlit_extras.colored_header import colored_header
 import plotly.express as px
+from dotenv import load_dotenv
+import os
 
 # Set page configuration
 st.set_page_config(
@@ -34,12 +36,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# MongoDB Configuration
-MONGO_URI = "mongodb+srv://radheshyamjanwa666:TPo5T91ldKNiWWCM@cluster0.bdfxa.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+load_dotenv()
+
+# MongoDB Configuration (Replace with your MongoDB URI)
+MONGO_URI = os.getenv("MONGO_URI_API")
+# MONGO_URI = process.env.MONGO_URI
 DB_NAME = "call_filter_db"
 FILTER_COLLECTION = "filter_rules"
 LISTS_COLLECTION = "phone_lists"
 API_HISTORY_COLLECTION = "api_history"
+AADHAAR_RECORDS_COLLECTION = "aadhar_data"
+UNLINKED_HISTORY_COLLECTION = "unlinked_history"
 
 # Connect to MongoDB
 @st.cache_resource
@@ -51,9 +58,11 @@ db = client[DB_NAME]
 rules_collection = db[FILTER_COLLECTION]
 lists_collection = db[LISTS_COLLECTION]
 api_history_collection = db[API_HISTORY_COLLECTION]
+aadhaar_records_collection = db[AADHAAR_RECORDS_COLLECTION]
+unlinked_history_collection = db[UNLINKED_HISTORY_COLLECTION]
 
 # API Configuration
-NUMLOOKUP_API_KEY = "num_live_zo8k5QYZZ7zjPiqBMhI0s0K4B5TtMMgtbeqBzJgM"
+NUMLOOKUP_API_KEY = os.getenv("NUMLOOKUP_API_KEY")
 
 def validate_number(mobile_number):
     """Check if a mobile number is valid using NumLookup API and detect spam calls."""
@@ -227,7 +236,8 @@ with st.sidebar:
                     "⚙️ Filter Rules", 
                     "📞 Phone Lists", 
                     "📊 API History",
-                    "🔧 Settings"])
+                    "🔧 Settings",
+                    "📱 Aadhaar-Mobile Link Checker"])
 
 # Main content area
 if page == "🔍 Number Checker":
@@ -412,9 +422,11 @@ elif page == "📞 Phone Lists":
             if not current_list:
                 st.info(f"No numbers in the {list_type} yet.")
             else:
+                # Create a DataFrame for better display
                 df = pd.DataFrame({"Phone Number": list(current_list)})
                 st.dataframe(df, use_container_width=True)
                 
+                # Export option
                 st.download_button(
                     label="📥 Export List",
                     data=df.to_csv(index=False).encode('utf-8'),
@@ -542,7 +554,189 @@ elif page == "🔧 Settings":
                 api_history_collection.delete_many({})
                 st.cache_data.clear()
                 st.success("All data has been reset!")
+elif page == "📱 Aadhaar-Mobile Link Checker":
+    st.header("1️⃣ Add Aadhaar-Mobile Record")
+    with st.form("record_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        aadhaar = col1.text_input("Aadhaar Number", max_chars=12)
+        mobile = col2.text_input("Mobile Number(s)", placeholder="Comma-separated if multiple")
+        add = st.form_submit_button("Add Record")
+        if add and db is not None:
+            if aadhaar.isdigit() and len(aadhaar) == 12:
+                mobiles = [m.strip() for m in mobile.split(",") if m.strip().isdigit() and len(m.strip()) == 10]
+                if mobiles:
+                    # Get existing record if any
+                    existing_record = aadhaar_records_collection.find_one({"aadhaar": aadhaar})
+                    
+                    if existing_record:
+                        # Update existing record
+                        existing_mobiles = existing_record.get("mobiles", [])
+                        for m in mobiles:
+                            if m not in existing_mobiles:
+                                existing_mobiles.append(m)
+                        
+                        aadhaar_records_collection.update_one(
+                            {"aadhaar": aadhaar},
+                            {"$set": {"mobiles": existing_mobiles, "updated_at": datetime.now()}}
+                        )
+                    else:
+                        # Create new record
+                        aadhaar_records_collection.insert_one({
+                            "aadhaar": aadhaar,
+                            "mobiles": mobiles,
+                            "created_at": datetime.now(),
+                            "updated_at": datetime.now()
+                        })
+                    st.success("✅ Mobile number(s) added to Aadhaar successfully!")
+                else:
+                    st.error("❌ Please enter valid 10-digit mobile number(s).")
+            else:
+                st.error("❌ Enter a valid 12-digit Aadhaar number.")
+
+    # --- Section: Manage Records ---
+    st.header("2️⃣ Manage Records")
+    if db is not None:
+        # Fetch all records
+        all_records = list(aadhaar_records_collection.find({}, {"_id": 0}))
+        
+        if all_records:
+            flat_data = []
+            for record in all_records:
+                for mobile in record.get("mobiles", []):
+                    flat_data.append({
+                        "aadhaar_number": record["aadhaar"],
+                        "mobile_number": mobile
+                    })
+
+            df = pd.DataFrame(flat_data)
+
+            # Search Filter
+            search = st.text_input("🔍 Search Mobile Number")
+            if search:
+                df = df[df['mobile_number'].str.contains(search)]
+
+            st.dataframe(df, use_container_width=True)
+
+            # Delete by Aadhaar
+            del_aadhaar = st.text_input("❌ Delete Record - Enter Aadhaar Number")
+            if st.button("Delete By Aadhaar"):
+                result = aadhaar_records_collection.delete_one({"aadhaar": del_aadhaar})
+                if result.deleted_count > 0:
+                    st.success("🗑️ All mobile numbers for Aadhaar deleted.")
+                else:
+                    st.warning("⚠️ No record found for that Aadhaar.")
+
+            # Clear all
+            if st.button("🧹 Clear All Records"):
+                aadhaar_records_collection.delete_many({})
+                st.success("All records cleared.")
+        else:
+            st.info("No records yet. Add some above.")
+    else:
+        st.error("Database connection failed. Check your MongoDB connection.")
+
+    # --- Section: Active Numbers ---
+    st.header("3️⃣ Check Active Mobile Numbers")
+
+    active_input = st.text_area("📥 Paste active numbers (comma-separated or single)",
+                                placeholder="e.g. 9876543210,7654321098")
+
+    if active_input and db is not None:
+        active_list = [num.strip() for num in active_input.split(",") if num.strip().isdigit()]
+        df_status_list = []
+        
+        timestamp = datetime.now()
+        unlinked_this_round = []
+
+        # Loop through Aadhaar records
+        records = list(aadhaar_records_collection.find())
+        for record in records:
+            aadhaar = record["aadhaar"]
+            mobiles = record.get("mobiles", [])
+            active_mobiles = []
+            
+            for m in mobiles:
+                status = "✅ Active" if m in active_list else "⚠️ Reassigned"
+                df_status_list.append({
+                    "aadhaar_number": aadhaar,
+                    "mobile_number": m,
+                    "Status": status
+                })
                 
+                if status == "✅ Active":
+                    active_mobiles.append(m)
+                else:
+                    unlink_record = {
+                        "aadhaar": aadhaar,
+                        "mobile": m,
+                        "status": status,
+                        "disconnected_at": timestamp
+                    }
+                    unlinked_history_collection.insert_one(unlink_record)
+                    unlinked_this_round.append({
+                        "aadhaar_number": aadhaar,
+                        "mobile_number": m,
+                        "Status": status,
+                        "disconnected_at": timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                    })
+            
+            # Update records: only keep active numbers
+            if active_mobiles:
+                aadhaar_records_collection.update_one(
+                    {"aadhaar": aadhaar},
+                    {"$set": {"mobiles": active_mobiles, "updated_at": timestamp}}
+                )
+            else:
+                aadhaar_records_collection.delete_one({"aadhaar": aadhaar})
+
+        # Show status
+        if df_status_list:
+            df_status = pd.DataFrame(df_status_list)
+            st.subheader("📊 Aadhaar-Mobile Status")
+            st.dataframe(df_status, use_container_width=True)
+            st.download_button("📥 Download All Status CSV", df_status.to_csv(index=False).encode('utf-8'),
+                            "aadhaar_mobile_status.csv", "text/csv")
+
+            # Show disconnected
+            if unlinked_this_round:
+                df_unlinked = pd.DataFrame(unlinked_this_round)
+                
+                st.subheader("🚫 Disconnected Aadhaar Records")
+                st.dataframe(df_unlinked, use_container_width=True)
+                st.download_button("📤 Download Disconnected Aadhaar CSV",
+                                df_unlinked.to_csv(index=False).encode('utf-8'),
+                                "unlinked_aadhaar_records.csv", "text/csv")
+
+                st.success(f"🔗 {len(df_unlinked)} reassigned mobile number(s) unlinked.")
+        else:
+            st.info("No records to check.")
+    else:
+        if db is not None and aadhaar_records_collection.count_documents({}) > 0:
+            st.info("Paste or enter mobile numbers above to check.")
+
+    # --- Section: View Audit Log ---
+    st.header("🕒 Audit Log (Disconnections History)")
+    if db is not None:
+        unlinked_history = list(unlinked_history_collection.find({}, {"_id": 0}))
+        if unlinked_history:
+            # Convert MongoDB objects to DataFrame-friendly format
+            formatted_history = []
+            for record in unlinked_history:
+                formatted_history.append({
+                    "aadhaar_number": record["aadhaar"],
+                    "mobile_number": record["mobile"],
+                    "Status": record["status"],
+                    "disconnected_at": record["disconnected_at"].strftime("%Y-%m-%d %H:%M:%S")
+                })
+            
+            df_log = pd.DataFrame(formatted_history)
+            st.dataframe(df_log, use_container_width=True)
+
+            csv_log = df_log.to_csv(index=False).encode('utf-8')
+            st.download_button("📑 Download Audit Log CSV", csv_log, "aadhaar_audit_log.csv", "text/csv")
+        else:
+            st.info("No disconnections yet.")
+                    
 # Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray;'>Call Filter System © 2025 - Version 2.0</p>", unsafe_allow_html=True)
