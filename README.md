@@ -41,9 +41,7 @@ Ensure you have the following installed before running the project:
 
 - Arduino IDE
 - Libraries:
-   -- SoftwareSerial.h
-   -- TinyGSM.h (if used for HTTP)
-    -- ArduinoJson.h (for parsing API responses, if included)
+  SoftwareSerial.h
 
 ## Installation
 
