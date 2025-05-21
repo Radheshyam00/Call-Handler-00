@@ -68,13 +68,13 @@ Upload Sketches using Arduino IDE.
 
 3. For API functionality:
 
-- Ensure the SIM card has active data.
+    - Ensure the SIM card has active data.
 
 4. Use a free or paid plan of an API like:
 
-- NumlookupAPI
+    - NumlookupAPI
 
-- Numverify
+    - Numverify
 
 5. Replace YOUR_API_KEY in the sketch.
 
