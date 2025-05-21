@@ -3,3 +3,4 @@ pymongo
 datetime
 requests
 plotly
+streamlit_extras
