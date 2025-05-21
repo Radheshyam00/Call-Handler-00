@@ -133,6 +133,9 @@ pymongo  # MongoDB driver for Python
 requests  # For making API requests
 streamlit # For making UI
 datetime # For timestamp
+streamlit_extras # For custom changes in streamlit
+dotenv # For .env file
+plotly # For visualization
 ```
 
 ## License
