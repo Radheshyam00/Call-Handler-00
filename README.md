@@ -41,7 +41,7 @@ Ensure you have the following installed before running the project:
 
     - Arduino IDE
     - Libraries:
-    SoftwareSerial.h
+    `SoftwareSerial.h`
 
 ## File Descriptions
 `sketch_blacklisting_mobile-numbers.ino`
@@ -62,21 +62,21 @@ GSM TX -> Arduino RX (use SoftwareSerial pins)
 GSM RX -> Arduino TX
 VCC -> 4.2V (with external power supply if needed)
 GND -> GND
-Upload Sketches using Arduino IDE.
 ```
-2. Open Serial Monitor to interact and view debug info.
+2. **Upload Sketches** using Arduino IDE.
+3. **Open Serial Monitor** to interact and view debug info.
 
-3. For API functionality:
+4. For API functionality:
 
     - Ensure the SIM card has active data.
 
-4. Use a free or paid plan of an API like:
+5. Use a free or paid plan of an API like:
 
     - NumlookupAPI
 
     - Numverify
 
-5. Replace YOUR_API_KEY in the sketch.
+5. Replace **YOUR_API_KEY** in the sketch.
 
 ## Installation
 
