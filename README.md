@@ -141,5 +141,5 @@ plotly # For visualization
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE) - see the LICENSE file for details.
 
